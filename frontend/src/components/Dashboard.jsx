@@ -146,7 +146,7 @@ const Dashboard = ({ user, logout, handleLogout }) => {
         <div className="p-6 border-b border-slate-100 shadow-sm bg-white">
           <div className="flex items-center gap-2 mb-8">
             <div className="w-8 h-8 rounded-lg medical-gradient flex items-center justify-center shadow-lg">
-              <Sparkles className="text-white w-5 h-5" />
+              <img src="/logo.png" className="w-5 h-5 object-contain" alt="Logo" />
             </div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight font-outfit">Curalink AI</h1>
           </div>

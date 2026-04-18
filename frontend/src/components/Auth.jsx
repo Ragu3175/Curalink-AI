@@ -31,7 +31,7 @@ const Auth = () => {
                 {/* Logo & Header */}
                 <div className="text-center mb-10">
                     <div className="w-16 h-16 rounded-2xl medical-gradient flex items-center justify-center shadow-xl mx-auto mb-6 transform hover:rotate-6 transition-transform">
-                        <Sparkles className="text-white w-8 h-8" />
+                        <img src="/logo.png" className="w-8 h-8 object-contain" alt="Curalink AI" />
                     </div>
                     <h1 className="text-3xl font-bold text-slate-900 font-outfit tracking-tight mb-2">
                         {isLogin ? 'Welcome Back' : 'Create Researcher Account'}

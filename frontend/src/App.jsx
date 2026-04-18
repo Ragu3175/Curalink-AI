@@ -35,7 +35,7 @@ const MainContent = () => {
       <div className="h-screen w-screen bg-[#f8fafc] flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 rounded-2xl medical-gradient flex items-center justify-center shadow-xl mx-auto animate-pulse">
-            <Sparkles className="text-white w-8 h-8" />
+            <img src="/logo.png" className="w-8 h-8 object-contain" alt="Curalink Logo" />
           </div>
           <div className="text-sky-600 font-bold tracking-widest text-xs uppercase animate-pulse">INITIALIZING PIPELINE...</div>
         </div>
