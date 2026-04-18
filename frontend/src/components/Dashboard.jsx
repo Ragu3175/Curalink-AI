@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, Users, BookOpen, FlaskConical, History, 
   MapPin, Stethoscope, ChevronRight, Info, ExternalLink,
-  Loader2, Sparkles, PlusCircle, Search
+  Loader2, Sparkles, PlusCircle, Search, Menu, X, ChevronLeft
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -20,6 +20,8 @@ const Dashboard = ({ user, logout, handleLogout }) => {
   const [publications, setPublications] = useState([]);
   const [trials, setTrials] = useState([]);
   const [activeTab, setActiveTab] = useState('publications');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isResearchOpen, setIsResearchOpen] = useState(false);
   // Patient Context State
   const [context, setContext] = useState({
     name: user?.username || 'Researcher',
@@ -82,6 +84,7 @@ const Dashboard = ({ user, logout, handleLogout }) => {
       intent: 'New Inquiry'
     });
     startFreshWelcome();
+    setIsMenuOpen(false);
   };
 
   const handleLoadConversation = async (id) => {
@@ -96,10 +99,14 @@ const Dashboard = ({ user, logout, handleLogout }) => {
       setTrials(data.clinicalTrials || []);
       setContext(data.patientContext || context);
     } catch (error) {
-      console.error('Failed to load conversation:', error);
+      if (error.response?.status !== 404) {
+        console.error('Failed to load conversation:', error);
+      }
+      localStorage.removeItem('curalink_cid');
       handleNewChat();
     } finally {
       setIsSwitching(false);
+      setIsMenuOpen(false);
     }
   };
 
@@ -140,15 +147,55 @@ const Dashboard = ({ user, logout, handleLogout }) => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-inter text-slate-800">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-inter text-slate-800 flex-col lg:flex-row">
+      {/* Mobile Header */}
+      <header className="lg:hidden flex items-center justify-between p-4 bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <button 
+          onClick={() => setIsMenuOpen(true)}
+          className="p-2 -ml-2 text-slate-500 hover:text-slate-900 transition-colors"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+        
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg medical-gradient flex items-center justify-center shadow-md">
+            <img src="/logo.png" className="w-4 h-4 object-contain" alt="Logo" />
+          </div>
+          <span className="text-lg font-bold text-slate-900 font-outfit">Curalink AI</span>
+        </div>
+
+        <button 
+          onClick={() => setIsResearchOpen(true)}
+          className="p-2 -mr-2 text-slate-500 hover:text-slate-900 transition-colors relative"
+        >
+          <BookOpen className="w-6 h-6" />
+          {(publications.length > 0 || trials.length > 0) && (
+            <span className="absolute top-1 right-1 w-2 h-2 bg-sky-500 rounded-full border-2 border-white"></span>
+          )}
+        </button>
+      </header>
+
+      {/* Overlay Backdrop */}
+      {(isMenuOpen || isResearchOpen) && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden animate-in fade-in duration-300"
+          onClick={() => { setIsMenuOpen(false); setIsResearchOpen(false); }}
+        />
+      )}
+
       {/* Sidebar - History & Context */}
-      <aside className="w-80 border-r border-slate-200 bg-white flex flex-col z-10">
+      <aside className={`fixed inset-y-0 left-0 w-80 border-r border-slate-200 bg-white flex flex-col z-50 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-slate-100 shadow-sm bg-white">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 rounded-lg medical-gradient flex items-center justify-center shadow-lg">
-              <img src="/logo.png" className="w-5 h-5 object-contain" alt="Logo" />
+          <div className="flex items-center justify-between mb-8 lg:block">
+            <div className="flex items-center gap-2 lg:mb-0">
+              <div className="w-8 h-8 rounded-lg medical-gradient flex items-center justify-center shadow-lg">
+                <img src="/logo.png" className="w-5 h-5 object-contain" alt="Logo" />
+              </div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight font-outfit">Curalink AI</h1>
             </div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight font-outfit">Curalink AI</h1>
+            <button onClick={() => setIsMenuOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-slate-600">
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
           <button 
@@ -235,12 +282,12 @@ const Dashboard = ({ user, logout, handleLogout }) => {
       </aside>
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col bg-slate-50 relative">
-        <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-200">
+      <main className="flex-1 flex flex-col bg-slate-50 relative overflow-hidden h-full">
+        <div className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-200">
           <div className="max-w-4xl mx-auto space-y-6">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                <div className={`max-w-[85%] p-5 rounded-3xl shadow-sm border ${
+                <div className={`max-w-[92%] lg:max-w-[85%] p-4 lg:p-5 rounded-2xl lg:rounded-3xl shadow-sm border ${
                   msg.role === 'user' 
                     ? 'bg-sky-600 text-white border-sky-500 rounded-tr-none' 
                     : 'bg-white text-slate-800 border-slate-200 rounded-tl-none prose prose-slate prose-sm'
@@ -282,44 +329,50 @@ const Dashboard = ({ user, logout, handleLogout }) => {
         </div>
 
         {/* Input Area */}
-        <div className="p-8 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
+        <div className="p-4 lg:p-8 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
           <form 
             onSubmit={handleSend}
-            className="max-w-4xl mx-auto flex items-center gap-3 bg-white p-2 rounded-2xl shadow-2xl border border-slate-200 focus-within:border-sky-400 transition-colors"
+            className="max-w-4xl mx-auto flex items-center gap-2 lg:gap-3 bg-white p-1.5 lg:p-2 rounded-2xl shadow-xl lg:shadow-2xl border border-slate-200 focus-within:border-sky-400 transition-colors"
           >
             <input 
               type="text" 
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Query specialized drug data, trial results, or technical publications..."
-              className="flex-1 px-4 py-3 outline-none text-slate-700 bg-transparent text-sm placeholder:text-slate-400"
+              placeholder="Query disease data, trial results..."
+              className="flex-1 px-3 lg:px-4 py-2.5 lg:py-3 outline-none text-slate-700 bg-transparent text-sm placeholder:text-slate-400 min-w-0"
             />
             <button 
               type="submit" 
               disabled={isLoading || isSwitching}
-              className="w-12 h-12 rounded-xl bg-sky-600 flex items-center justify-center text-white hover:bg-sky-700 transition-all shadow-lg active:scale-90 disabled:opacity-50"
+              className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-sky-600 flex items-center justify-center text-white hover:bg-sky-700 transition-all shadow-lg active:scale-90 disabled:opacity-50 flex-shrink-0"
             >
               <Send className="w-5 h-5" />
             </button>
           </form>
-          <div className="max-w-4xl mx-auto mt-3 px-4 text-[10px] text-slate-400 flex items-center gap-2">
-            <Info className="w-3 h-3" /> Curalink logic is optimized for precision. Follow-up memory is isolated per research thread.
+          <div className="max-w-4xl mx-auto mt-2 lg:mt-3 px-2 lg:px-4 text-[10px] text-slate-400 flex items-center gap-2">
+            <Info className="w-3 h-3 flex-shrink-0" /> <span className="truncate">Curalink logic is optimized for precision. Follow-up memory is isolated.</span>
           </div>
         </div>
       </main>
 
       {/* Research Sidebar */}
-      <aside className="w-96 border-l border-slate-200 bg-white flex flex-col shadow-2xl z-10">
-        <div className="p-6 pb-2 bg-white sticky top-0 z-20">
-          <h2 className="text-lg font-bold text-slate-900 font-outfit tracking-tight mb-4">Study Highlights</h2>
-          <div className="flex p-1 bg-slate-100 rounded-xl gap-1">
+      <aside className={`fixed inset-y-0 right-0 w-80 lg:w-96 border-l border-slate-200 bg-white flex flex-col z-50 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isResearchOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="p-6 pb-2 bg-white sticky top-0 z-20 flex items-center justify-between lg:block">
+          <h2 className="text-lg font-bold text-slate-900 font-outfit tracking-tight mb-0 lg:mb-4">Study Highlights</h2>
+          <button onClick={() => setIsResearchOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="p-4 lg:p-6 pb-2 bg-white sticky top-[60px] lg:top-0 z-20">
+          <div className="flex p-1 bg-slate-100 rounded-xl gap-1 font-inter">
             <button onClick={() => setActiveTab('publications')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'publications' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <BookOpen className={`w-3.5 h-3.5 ${activeTab === 'publications' ? 'text-sky-600' : 'text-slate-400'}`} />
-              Papers ({publications.length})
+              Papers
             </button>
             <button onClick={() => setActiveTab('trials')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'trials' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <FlaskConical className={`w-3.5 h-3.5 ${activeTab === 'trials' ? 'text-emerald-600' : 'text-slate-400'}`} />
-              Trials ({trials.length})
+              Trials
             </button>
           </div>
         </div>

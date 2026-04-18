@@ -16,7 +16,7 @@ export const AuthProvider = ({ children }) => {
                     const userData = await fetchMe();
                     setUser(userData);
                 } catch (err) {
-                    console.error('Failed to restore session:', err);
+                    // Silent fail for session restoration if unauthorized or token expired
                     localStorage.removeItem('curalink_token');
                 }
             }

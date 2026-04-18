@@ -125,3 +125,20 @@ aside h1 {
     opacity: 1;
   }
 }
+
+/* Mobile-specific refinements */
+@media (max-width: 1024px) {
+  .flex-col {
+    height: 100dvh; /* Use dynamic viewport height for mobile */
+  }
+  
+  /* Ensure the input doesn't get cut off by browser chrome */
+  input, button {
+    font-size: 16px !important; /* Prevent iOS zoom on focus */
+  }
+}
+
+/* Smooth Sidebar Transitions */
+.sidebar-transition {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
