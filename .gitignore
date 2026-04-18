@@ -1,0 +1,45 @@
+# Dependency Directories
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Build outputs
+frontend/dist/
+dist/
+build/
+
+# Environment Variables
+.env
+backend/.env
+frontend/.env
+.env.local
+.env.*.local
+
+# Project Planning Files (As Requested)
+*.md
+!README.md
+Loom-Script.txt
+Task.md
+"prompts and response.txt"
+
+# Search Scratch/Debug Files
+backend/scratch/
+backend/test-search.js
+backend/check-ollama.js
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
