@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const chatRoutes = require('./src/routes/chatRoutes');
+const authRoutes = require('./src/routes/authRoutes');
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use((req, res, next) => {
 // Routes
 app.get('/ping', (req, res) => res.send('pong'));
 app.use('/api', chatRoutes);
+app.use('/api/auth', authRoutes);
 
 // Health Check
 app.get('/', (req, res) => res.send('Curalink Backend Running'));

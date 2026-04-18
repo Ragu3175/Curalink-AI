@@ -1,30 +1,66 @@
-const { Ollama } = require('ollama');
+const axios = require('axios');
 const dotenv = require('dotenv');
 
 dotenv.config();
 
 class OllamaService {
     constructor() {
-        this.ollama = new Ollama();
-        this.model = process.env.OLLAMA_MODEL || 'llama3.2';
+        this.apiKey = process.env.GROQ_API_KEY;
+        this.baseURL = 'https://api.groq.com/openai/v1/chat/completions';
+        this.model = 'llama-3.3-70b-versatile'; // High-precision open-source model
+    }
+
+    async chat(messages) {
+        if (!this.apiKey) {
+            console.error('[CRITICAL] Groq API Key is missing. Please add GROQ_API_KEY to your .env file.');
+            throw new Error('AI Service Configuration Error');
+        }
+
+        try {
+            const response = await axios.post(
+                this.baseURL,
+                {
+                    model: this.model,
+                    messages: messages,
+                    temperature: 0.1, // Low temperature for high precision medical data
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
+
+            return {
+                message: {
+                    content: response.data.choices[0].message.content
+                }
+            };
+        } catch (error) {
+            console.error('[GROQ API ERROR]', error.response?.data || error.message);
+            throw error;
+        }
     }
 
     async detectDisease(userQuery, defaultDisease = 'General Research') {
-        const systemPrompt = `Identify the single primary clinical disease, condition, or medical topic mentioned in this query. 
-If it's a specific disease (e.g., "Duchenne Muscular Dystrophy"), output the name.
-If it's a general health question (e.g., "why people get cold"), output the core topic (e.g., "Thermoregulation").
-If it's completely generic, output "General Research".
+        const systemPrompt = `You are a medical intelligence gatekeeper.
+Task: Identify the primary disease, condition, or medical symptom. 
+
 Query: "${userQuery}"
-Output ONLY the detected entity name. No conversation.`;
+
+STRICT PROTOCOL:
+1. If the query is just a greeting (hello, hi), small talk, or non-medical, output "CONVERSATIONAL".
+2. If it's a symptom (tired, cold, pain), output "[Symptom] Etiology".
+3. If it's a specific disease, output its formal name.
+4. Output ONLY the detected entity. No talk.`;
 
         try {
-            const response = await this.ollama.chat({
-                model: this.model,
-                messages: [{ role: 'user', content: systemPrompt }],
-            });
+            const response = await this.chat([{ role: 'user', content: systemPrompt }]);
             const detected = response.message.content.trim().replace(/[".]/g, '');
-            // Sanitize: remove any "I identified..." conversational fluff
             const sanitized = detected.split('\n')[0].replace(/.*identif.*:\s*/i, '').trim();
+            
+            if (sanitized.toUpperCase().includes('CONVERSATIONAL')) return 'CONVERSATIONAL';
             return (sanitized.length > 2 && sanitized.length < 50) ? sanitized : defaultDisease;
         } catch (error) {
             return defaultDisease;
@@ -33,32 +69,26 @@ Output ONLY the detected entity name. No conversation.`;
 
     async expandQuery(userQuery, context = {}) {
         const { disease } = context;
+        if (disease === 'CONVERSATIONAL') return '';
+
         const systemPrompt = `You are a technical search engine optimizer. Transform the medical query into HIGH-PRECISION SEARCH KEYWORDS.
 Current Context: ${disease || 'General Medical'}
 User Request: "${userQuery}"
 
 STRICT PROTOCOL:
-1. Output ONLY 5-8 technical terms separated by commas.
-2. NO DISCLAIMERS. NO CONVERSATION.
-3. MEDICAL DISAMBIGUATION: If the query mentions "sugar", "insulin", or "glucose", prioritize "Diabetes Mellitus" and EXCLUDE "Diabetes Insipidus".
-4. If the query is medical/health-related, EXCLUDE industrial terms using NOT (e.g., "sugarcane juice, microbiome, NOT milling, NOT ethanol").
-5. Preserve drug names like "Elevidys" or "CAP-1002" exactly.
-6. NO markdown, NO formatting.`;
+1. Output ONLY 3-5 technical keywords separated by commas.
+2. If the user mentions a symptom (e.g., "cold"), expand it to potential medical causes (e.g., "Thermoregulation, Cold Sensitivity, Etiology, Pathophysiology").
+3. NO FILLER. NO QUESTIONS.
+4. Example: "why am I cold in summer" -> "Cold Intolerance, Thermoregulation, Hypothyroidism, Anemia, Etiology"`;
 
         try {
-            const response = await this.ollama.chat({
-                model: this.model,
-                messages: [{ role: 'user', content: systemPrompt }],
-            });
+            const response = await this.chat([{ role: 'user', content: systemPrompt }]);
             let content = response.message.content.trim().replace(/"/g, '');
             
-            // EMERGENCY DEFENSE: If AI starts being chatty or apologetic, discard and use user query
-            const noisePatterns = [/i can't/i, /i'm sorry/i, /disclaimers/i, /medical advice/i, /limitations/i];
+            const noisePatterns = [/i can't/i, /i'm sorry/i, /disclaimers/i];
             if (noisePatterns.some(pattern => pattern.test(content)) || content.split(' ').length > 20) {
-                console.log('[DEFENSE] AI expansion failed/hallucinated. Falling back to original query.');
                 return userQuery;
             }
-            
             return content;
         } catch (error) {
             return userQuery;
@@ -66,11 +96,14 @@ STRICT PROTOCOL:
     }
 
     async synthesizeReport(userQuery, publications, clinicalTrials, context = {}) {
-        const { disease, history = [] } = context;
+        const { disease, history = [], username = 'Researcher' } = context;
         const formattedHistory = history.map(h => `${h.role.toUpperCase()}: ${h.content}`).join('\n');
 
         const systemPrompt = `You are "Curalink", a High-Precision Medical Research Intelligence. 
-Analyze these specific records for: "${userQuery}"
+You are an expert medical assistant talking to a scientist or doctor. 
+
+USER PROFILE: ${username}
+CURRENT TOPIC: ${disease}
 
 CONVERSATION HISTORY:
 ${formattedHistory || 'No previous context.'}
@@ -82,23 +115,18 @@ ${publications.length > 0 ? publications.map((p, i) => `${i+1}. TITLE: ${p.title
 Clinical Trials:
 ${clinicalTrials.length > 0 ? clinicalTrials.map((t, i) => `${i+1}. TITLE: ${t.title} | STATUS: ${t.status} | LOCATION: ${t.location}`).join('\n') : "No relevant clinical trials found."}
 
-Task: Provide a technical, source-backed report.
-STRICT RULES:
-1. QUICK SUMMARY: Start the report with a 1-sentence "QUICK SUMMARY" in bold at the very top.
-2. RELEVANCE FILTER: Before writing, verify if the provided data actually addresses "${userQuery}".
-3. NO HALLUCINATIONS: If the data points are unrelated to the specific question (e.g. general research papers for a specific symptom), you MUST state: "The current research database (PubMed/ClinicalTrials) does not contain direct studies for this query."
-4. ANALYZE AND CONNECT: Only connect dots that are scientifically plausible. Do NOT invent findings.
-5. HONESTY: If you are making a general inference, clearly label it as such.
-6. Professional tone, use [1], [2] citations.`;
+STRICT ANALYTICAL RULES:
+1. GREETING: Start with a friendly, professional greeting like "Hey ${username}, good to see you," or "Welcome back to the lab, ${username}."
+2. QUICK SUMMARY: Provide a 1-sentence Bold "QUICK SUMMARY".
+3. NO HALLUCINATIONS: If current data is unrelated to the query, state "I've checked our active records, but I don't see direct overlap for this specific question yet."
+4. CITATIONS: Use [1], [2] formatting.
+5. TONE: Collaborative, technical but friendly. Like a high-level research peer.`;
 
         try {
-            const response = await this.ollama.chat({
-                model: this.model,
-                messages: [{ role: 'user', content: systemPrompt }],
-            });
+            const response = await this.chat([{ role: 'user', content: systemPrompt }]);
             return response.message.content;
         } catch (error) {
-            return "Critical Analysis Delay: Unable to synthesize report from provided data.";
+            return "Critical Analysis Delay: Unable to synthesize report via cloud LLM.";
         }
     }
 }

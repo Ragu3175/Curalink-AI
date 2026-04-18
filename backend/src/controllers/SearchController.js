@@ -12,14 +12,14 @@ class SearchController {
     cleanSearchQuery(query) {
         if (!query) return "";
         // If the query is a long sentence, it's likely conversational noise or a failed expansion
-        if (query.split(' ').length > 12) {
-            const fillerWords = new Set(['based', 'on', 'the', 'shown', 'in', 'sidebar', 'session', 'which', 'one', 'discusses', 'specifically', 'what', 'was', 'main', 'takeaway', 'please', 'provide', 'information', 'about']);
+        if (query.split(' ').length > 8) {
+            const fillerWords = new Set(['latest', 'clinical', 'breakthroughs', 'findings', 'regarding', 'human', 'trials', 'specifically', 'outcomes', 'based', 'on', 'the', 'shown', 'in', 'sidebar', 'session', 'which', 'one', 'discusses', 'specifically', 'what', 'was', 'main', 'takeaway', 'please', 'provide', 'information', 'about']);
             return query
                 .toLowerCase()
-                .replace(/[^\w\s-]/g, ' ') // Remove non-alphanumeric except hyphens
+                .replace(/[^\w\s-]/g, ' ')
                 .split(/\s+/)
                 .filter(word => !fillerWords.has(word) && word.length > 2)
-                .slice(0, 10) // Keep it focused
+                .slice(0, 6) // Keep it extremely tight for PubMed
                 .join(' ');
         }
         return query;
@@ -35,12 +35,14 @@ class SearchController {
             let conversation;
             if (isConnected && conversationId && mongoose.Types.ObjectId.isValid(conversationId)) {
                 try {
-                    conversation = await Conversation.findById(conversationId);
+                    // SECURE RETRIEVAL: Must belong to current user
+                    conversation = await Conversation.findOne({ _id: conversationId, userId: req.user.id });
                 } catch (err) {}
             }
             
             if (!conversation) {
                 conversation = new Conversation({
+                    userId: req.user.id, // ASSOCIATE WITH USER
                     patientContext: context || {},
                     history: [],
                     publications: [],
@@ -52,6 +54,50 @@ class SearchController {
             const requestedEntities = Array.from(new Set((message.match(entityRegex) || []).map(e => e.toLowerCase())));
             
             const targetDisease = await OllamaService.detectDisease(message, conversation.patientContext.disease || 'General');
+            
+            // [GATING] If conversational, skip the heavy research APIs
+            if (targetDisease === 'CONVERSATIONAL') {
+                console.log('[GATING] Conversational query detected. Skipping research APIs.');
+                
+                // If it's a new conversation, try to fetch some 'Discovery' papers based on user interests
+                if (conversation.history.length === 0 && !conversationId) {
+                    const user = await mongoose.model('User').findById(req.user.id);
+                    const interests = (user.interests || []).join(', ');
+                    if (interests) {
+                        console.log(`[DISCOVERY] Fetching interest-based papers: ${interests}`);
+                        const [discoveryPubs, discoveryTrials] = await Promise.all([
+                            PubMedService.searchPublications(interests, null, 8),
+                            ClinicalTrialsService.searchTrials(interests, null, 8)
+                        ]);
+                        conversation.publications = discoveryPubs;
+                        conversation.clinicalTrials = discoveryTrials;
+                    }
+                }
+
+                const chatResponse = await OllamaService.synthesizeReport(
+                    message, 
+                    conversation.publications, 
+                    conversation.clinicalTrials,
+                    { 
+                        disease: 'General Interest', 
+                        history: conversation.history.slice(-5),
+                        username: req.user.username 
+                    }
+                );
+
+                conversation.history.push({ role: 'user', content: message });
+                conversation.history.push({ role: 'assistant', content: chatResponse });
+                await conversation.save();
+
+                return res.json({
+                    conversationId: conversation._id,
+                    report: chatResponse,
+                    publications: conversation.publications,
+                    clinicalTrials: conversation.clinicalTrials,
+                    context: conversation.patientContext
+                });
+            }
+
             let expandedQuery = await OllamaService.expandQuery(message, { disease: targetDisease });
 
             // [RESILIENCE SHIELD] Clean the query before sending to APIs
@@ -115,16 +161,24 @@ class SearchController {
                 return { ...t, boostScore };
             }).sort((a, b) => b.boostScore - a.boostScore).slice(0, 10);
 
+            // TOPIC DETECTION: If the disease changed significantly, don't fall back to old papers
+            const isNewTopic = conversation.patientContext.disease && 
+                               targetDisease.toLowerCase() !== conversation.patientContext.disease.toLowerCase();
+
             // AI Synthesis
             const researchInsight = await OllamaService.synthesizeReport(
                 message, 
-                finalPublications.length > 0 ? finalPublications : conversation.publications, 
-                finalTrials,
-                { disease: targetDisease, history: conversation.history.slice(-5) }
+                finalPublications.length > 0 ? finalPublications : (isNewTopic ? [] : conversation.publications), 
+                finalTrials.length > 0 ? finalTrials : (isNewTopic ? [] : conversation.clinicalTrials),
+                { 
+                    disease: targetDisease, 
+                    history: conversation.history.slice(-5),
+                    username: req.user.username
+                }
             );
 
-            // HISTORICAL LOCK
-            if (finalPublications.length > 0) {
+            // HISTORICAL LOCK: Update results only if we found something new or it's a new topic
+            if (finalPublications.length > 0 || isNewTopic) {
                 conversation.publications = finalPublications;
             }
             if (finalTrials.length > 0) {
@@ -160,8 +214,9 @@ class SearchController {
             if (!mongoose.Types.ObjectId.isValid(id)) {
                 return res.status(400).json({ error: 'Invalid ID' });
             }
-            const conversation = await Conversation.findById(id);
-            if (!conversation) return res.status(404).json({ error: 'Not found' });
+            // SECURE RETRIEVAL: Only allow user to view their own conversation
+            const conversation = await Conversation.findOne({ _id: id, userId: req.user.id });
+            if (!conversation) return res.status(404).json({ error: 'Not found or unauthorized' });
             res.json(conversation);
         } catch (error) {
             res.status(500).json({ error: error.message });
@@ -170,7 +225,8 @@ class SearchController {
 
     async getHistory(req, res) {
         try {
-            const history = await Conversation.find().sort({ lastUpdated: -1 }).limit(10);
+            // SECURE FILTER: Only return history for the logged-in user
+            const history = await Conversation.find({ userId: req.user.id }).sort({ lastUpdated: -1 }).limit(10);
             res.json(history);
         } catch (error) {
             res.json([]);

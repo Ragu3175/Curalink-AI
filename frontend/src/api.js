@@ -1,9 +1,45 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000') + '/api';
+
+// Create instance for better configuration
+const api = axios.create({
+    baseURL: API_BASE
+});
+
+// Add interceptor to include token in all requests
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('curalink_token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
+export const loginUser = async (email, password) => {
+    const response = await api.post('/auth/login', { email, password });
+    if (response.data.token) localStorage.setItem('curalink_token', response.data.token);
+    return response.data;
+};
+
+export const registerUser = async (username, email, password) => {
+    const response = await api.post('/auth/register', { username, email, password });
+    if (response.data.token) localStorage.setItem('curalink_token', response.data.token);
+    return response.data;
+};
+
+export const completeOnboarding = async (onboardingData) => {
+    const response = await api.post('/auth/onboarding', onboardingData);
+    return response.data;
+};
+
+export const fetchMe = async () => {
+    const response = await api.get('/auth/me');
+    return response.data;
+};
 
 export const sendMessage = async (message, conversationId, context) => {
-    const response = await axios.post(`${API_BASE}/chat`, {
+    const response = await api.post('/chat', {
         message,
         conversationId,
         context
@@ -12,12 +48,13 @@ export const sendMessage = async (message, conversationId, context) => {
 };
 
 export const getHistory = async () => {
-    const response = await axios.get(`${API_BASE}/history`);
+    const response = await api.get('/history');
     return response.data;
 };
 
-// ADDED: Fetch full state for a specific conversation
 export const getConversation = async (id) => {
-    const response = await axios.get(`${API_BASE}/conversation/${id}`);
+    const response = await api.get(`/conversation/${id}`);
     return response.data;
 };
+
+export default api;
